@@ -62,17 +62,19 @@ class ChatRequest(BaseModel):
 # FRONTEND SERVING
 # =====================================================================
 
+FRONTEND_DIR = os.path.join(BASE_DIR, "..", "Frontend")
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def serve_index():
-    return FileResponse(os.path.join(BASE_DIR, "index.html"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 @app.get("/index.css", include_in_schema=False)
 async def serve_css():
-    return FileResponse(os.path.join(BASE_DIR, "index.css"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.css"))
 
 @app.get("/app.js", include_in_schema=False)
 async def serve_js():
-    return FileResponse(os.path.join(BASE_DIR, "app.js"))
+    return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
 
 # =====================================================================
 # STREAMING CHAT ENDPOINT
