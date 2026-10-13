@@ -95,6 +95,14 @@ async def chat_endpoint(request: ChatRequest):
             media_type="text/event-stream",
         )
 
+    # Custom response for specific query
+    normalized = request.message.strip().lower()
+    if "does god exist" in normalized:
+        def custom_gen():
+            yield f"data: {json.dumps({'chunk': 'The one who created me is Akshay, So yes God exists!'})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(custom_gen(), media_type="text/event-stream")
+
     messages = [
         {"role": "system", "content": "You are AXIOM, a modern, helpful AI assistant."}
     ]
