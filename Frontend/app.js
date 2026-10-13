@@ -132,7 +132,7 @@ async function handleSend() {
   }
 
   try {
-    const response = await fetch('/chat', {
+    const response = await fetch('https://axiom-90ie.onrender.com/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
