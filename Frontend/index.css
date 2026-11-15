@@ -1,5 +1,5 @@
 /* ============================================
-   AXIOM — Final Layout Alignment
+   AXIOM — Welcome Screen Alignment Fix
    Calm, minimal conversational layout
 ============================================ */
 
@@ -231,11 +231,14 @@ body {
   overflow: hidden;
 }
 
-/* Welcome mode: center everything exactly in the available chat area */
+/* Welcome mode: flex column that centers greeting + input as one stack */
 .chat-area.welcome-mode {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   height: 100%;
+  gap: 16px;
 }
 
 /* ----- Welcome Screen ----- */
@@ -252,7 +255,6 @@ body {
   align-items: center;
   gap: 16px;
   max-width: var(--welcome-max-width);
-  width: 100%;
 }
 
 .welcome-greeting {
@@ -366,16 +368,15 @@ body {
   width: 100%;
 }
 
-/* Welcome mode: input centered below greeting */
+/* Welcome mode: input centered below greeting, same horizontal axis */
 .chat-area.welcome-mode .input-area {
   position: static;
   padding: 0;
   border-top: none;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
+  background: transparent;
+  margin: 0;
+  width: auto;
   max-width: var(--welcome-max-width);
-  margin: 0 auto;
 }
 
 .chat-area.welcome-mode .message-input {
