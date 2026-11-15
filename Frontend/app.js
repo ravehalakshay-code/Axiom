@@ -8,9 +8,44 @@ const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const newChatBtn = document.getElementById('newChatBtn');
 const clearBtn = document.getElementById('clearBtn');
+const sidebar = document.getElementById('sidebar');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const welcomeScreen = document.getElementById('welcomeScreen');
+const timeGreeting = document.getElementById('timeGreeting');
 
 let conversationHistory = [];
 let isSending = false;
+let isWelcomeScreen = true;
+
+/* ============================================
+   TIME-BASED GREETING
+============================================ */
+
+function getTimeBasedGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/* ============================================
+   WELCOME SCREEN STATE
+============================================ */
+
+function showWelcomeScreen() {
+  if (welcomeScreen) welcomeScreen.style.display = 'flex';
+  if (timeGreeting) timeGreeting.textContent = getTimeBasedGreeting();
+  if (chatForm) chatForm.classList.add('welcome-mode');
+  if (chatWindow) chatWindow.classList.remove('active');
+  isWelcomeScreen = true;
+}
+
+function hideWelcomeScreen() {
+  if (welcomeScreen) welcomeScreen.style.display = 'none';
+  if (chatForm) chatForm.classList.remove('welcome-mode');
+  if (chatWindow) chatWindow.classList.add('active');
+  isWelcomeScreen = false;
+}
 
 /* ============================================
    MARKDOWN RENDERING (safe, progressive)
@@ -81,6 +116,7 @@ function clearConversation() {
 
 function startNewChat() {
   clearConversation();
+  showWelcomeScreen();
   setTimeout(() => {
     addMessage("Hello, I'm AXIOM. How can I help you?", 'assistant');
   }, 200);
@@ -107,6 +143,11 @@ async function handleSend() {
   isSending = true;
   messageInput.value = '';
   messageInput.style.height = 'auto';
+
+  // Hide welcome screen on first user message
+  if (isWelcomeScreen) {
+    hideWelcomeScreen();
+  }
 
   addMessage(text, 'user');
   conversationHistory.push({ role: 'user', content: text });
@@ -215,6 +256,10 @@ function handleInputKeydown(event) {
   }
 }
 
+/* ============================================
+   EVENT LISTENERS
+============================================ */
+
 sendBtn.addEventListener('click', handleSend);
 chatForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -228,8 +273,11 @@ clearBtn.addEventListener('click', () => {
   messageInput.value = '';
   messageInput.focus();
 });
+sidebarToggle.addEventListener('click', () => {
+  sidebar.classList.toggle('collapsed');
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   messageInput.focus();
-  addMessage("Hello, I'm AXIOM. How can I help you?", 'assistant');
+  showWelcomeScreen();
 });
