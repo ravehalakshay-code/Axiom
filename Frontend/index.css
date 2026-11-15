@@ -1,6 +1,6 @@
 /* ============================================
-   AXIOM — Frontend Redesign
-   Calm, editorial, premium light theme
+   AXIOM — Frontend Refinement
+   Calm, minimal conversational layout
 ============================================ */
 
 :root {
@@ -25,6 +25,8 @@
   --sidebar-width: 260px;
   --sidebar-collapsed-width: 72px;
   --transition: 200ms ease;
+
+  --welcome-max-width: 650px;
 }
 
 *,
@@ -234,6 +236,12 @@ body {
   overflow: hidden;
 }
 
+/* Welcome mode: center all content horizontally */
+.chat-area.welcome-mode {
+  align-items: center;
+  justify-content: center;
+}
+
 /* ----- Welcome Screen ----- */
 .welcome-screen {
   display: flex;
@@ -241,21 +249,24 @@ body {
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 40px;
+  width: 100%;
   text-align: center;
 }
 
-.welcome-container {
+.welcome-composition {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
+  max-width: var(--welcome-max-width);
+  width: 100%;
 }
 
 .welcome-greeting {
   display: flex;
   align-items: center;
   gap: 14px;
+  justify-content: center;
 }
 
 .welcome-icon {
@@ -273,11 +284,11 @@ body {
 
 .time-greeting {
   font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 28px;
+  font-weight: 500;
+  font-size: 30px;
   color: var(--text);
   line-height: 1.3;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.25px;
 }
 
 /* ----- Chat Window ----- */
@@ -288,7 +299,7 @@ body {
   padding: 32px 48px 24px 48px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   min-height: 0;
   scroll-behavior: smooth;
   display: none;
@@ -356,26 +367,25 @@ body {
   transition: padding var(--transition), position var(--transition);
 }
 
-.input-area.welcome-mode {
+/* Welcome mode: input centered below greeting */
+.chat-area.welcome-mode .input-area {
   position: static;
   padding: 0;
   border-top: none;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+  width: 100%;
+  max-width: var(--welcome-max-width);
+  margin: 0 auto;
 }
 
-.input-area.welcome-mode .message-input {
+.chat-area.welcome-mode .message-input {
   min-height: 52px;
   width: 100%;
-  max-width: 600px;
   padding: 14px 18px;
 }
 
-.input-area.welcome-mode .send-btn {
+.chat-area.welcome-mode .send-btn {
   width: 48px;
   height: 48px;
 }
@@ -584,7 +594,7 @@ body {
 
   .chat-window {
     padding: 24px 36px;
-    gap: 16px;
+    gap: 20px;
   }
 
   .input-area {
@@ -684,6 +694,15 @@ body {
     min-width: 44px;
     min-height: 44px;
   }
+
+  .chat-area.welcome-mode .input-area {
+    max-width: 100%;
+    padding: 0 20px;
+  }
+
+  .time-greeting {
+    font-size: 26px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -739,6 +758,10 @@ body {
 
   .time-greeting {
     font-size: 24px;
+  }
+
+  .chat-area.welcome-mode .input-area {
+    padding: 0 16px;
   }
 }
 

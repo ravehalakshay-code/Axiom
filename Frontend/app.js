@@ -12,6 +12,7 @@ const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
 const welcomeScreen = document.getElementById('welcomeScreen');
 const timeGreeting = document.getElementById('timeGreeting');
+const chatArea = document.getElementById('chatArea');
 
 let conversationHistory = [];
 let isSending = false;
@@ -23,9 +24,9 @@ let isWelcomeScreen = true;
 
 function getTimeBasedGreeting() {
   const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return 'Good morning';
-  if (hour >= 12 && hour < 17) return 'Good afternoon';
-  return 'Good evening';
+  if (hour >= 5 && hour < 12) return 'Good Morning';
+  if (hour >= 12 && hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
 }
 
 /* ============================================
@@ -35,14 +36,14 @@ function getTimeBasedGreeting() {
 function showWelcomeScreen() {
   if (welcomeScreen) welcomeScreen.style.display = 'flex';
   if (timeGreeting) timeGreeting.textContent = getTimeBasedGreeting();
-  if (chatForm) chatForm.classList.add('welcome-mode');
+  if (chatArea) chatArea.classList.add('welcome-mode');
   if (chatWindow) chatWindow.classList.remove('active');
   isWelcomeScreen = true;
 }
 
 function hideWelcomeScreen() {
   if (welcomeScreen) welcomeScreen.style.display = 'none';
-  if (chatForm) chatForm.classList.remove('welcome-mode');
+  if (chatArea) chatArea.classList.remove('welcome-mode');
   if (chatWindow) chatWindow.classList.add('active');
   isWelcomeScreen = false;
 }
@@ -117,9 +118,6 @@ function clearConversation() {
 function startNewChat() {
   clearConversation();
   showWelcomeScreen();
-  setTimeout(() => {
-    addMessage("Hello, I'm AXIOM. How can I help you?", 'assistant');
-  }, 200);
 }
 
 function autoResizeTextarea() {
