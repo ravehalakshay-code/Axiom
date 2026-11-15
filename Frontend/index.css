@@ -1,5 +1,5 @@
 /* ============================================
-   AXIOM — Frontend Refinement
+   AXIOM — Final Layout Alignment
    Calm, minimal conversational layout
 ============================================ */
 
@@ -27,6 +27,7 @@
   --transition: 200ms ease;
 
   --welcome-max-width: 650px;
+  --conversation-max-width: 850px;
 }
 
 *,
@@ -90,14 +91,9 @@ body {
 }
 
 .sidebar.collapsed .nav-label,
-.sidebar.collapsed .logo h1 {
-  display: none;
-}
-
+.sidebar.collapsed .logo h1,
 .sidebar.collapsed .logo {
-  justify-content: center;
-  padding-bottom: 24px;
-  margin-bottom: 24px;
+  display: none;
 }
 
 .sidebar.collapsed .nav-btn {
@@ -231,15 +227,15 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Welcome mode: center all content horizontally */
+/* Welcome mode: center everything exactly in the available chat area */
 .chat-area.welcome-mode {
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  height: 100%;
 }
 
 /* ----- Welcome Screen ----- */
@@ -247,9 +243,6 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex: 1;
-  width: 100%;
   text-align: center;
 }
 
@@ -257,7 +250,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   max-width: var(--welcome-max-width);
   width: 100%;
 }
@@ -296,12 +289,15 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 32px 48px 24px 48px;
+  padding: 24px 32px 24px 32px;
   display: flex;
   flex-direction: column;
   gap: 24px;
   min-height: 0;
   scroll-behavior: smooth;
+  max-width: var(--conversation-max-width);
+  margin: 0 auto;
+  width: 100%;
   display: none;
 }
 
@@ -311,7 +307,7 @@ body {
 
 /* ----- Message Bubbles ----- */
 .message {
-  max-width: 720px;
+  max-width: 100%;
   width: fit-content;
   padding: 14px 20px;
   border-radius: var(--radius-bubble);
@@ -357,7 +353,7 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 10px;
-  padding: 20px 48px 32px 48px;
+  padding: 20px 32px 32px 32px;
   border-top: 1px solid var(--border);
   background: var(--bg);
   flex-shrink: 0;
@@ -365,6 +361,9 @@ body {
   bottom: 0;
   z-index: 50;
   transition: padding var(--transition), position var(--transition);
+  max-width: var(--conversation-max-width);
+  margin: 0 auto;
+  width: 100%;
 }
 
 /* Welcome mode: input centered below greeting */
@@ -593,12 +592,12 @@ body {
   }
 
   .chat-window {
-    padding: 24px 36px;
+    padding: 24px 32px;
     gap: 20px;
   }
 
   .input-area {
-    padding: 16px 36px 24px 36px;
+    padding: 16px 32px 24px 32px;
   }
 
   .message {
@@ -670,6 +669,8 @@ body {
   .chat-window {
     padding: 20px 24px;
     gap: 16px;
+    max-width: none;
+    margin: 0;
   }
 
   .message {
@@ -680,6 +681,8 @@ body {
 
   .input-area {
     padding: 16px 24px 20px 24px;
+    max-width: none;
+    margin: 0;
   }
 
   .message-input {
