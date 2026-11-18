@@ -171,19 +171,12 @@ async function handleSend() {
   }
 
   try {
-    // Frontend timing: record when the request is sent
-    const requestStartTime = performance.now();
-    let firstChunkReceived = false;
-
     const response = await fetch('https://axiom-90ie.onrender.com/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: text,
-        // Send history WITHOUT the current user message (it is sent via the
-        # "message" field above). This prevents the backend from receiving
-        # the latest user message twice.
-        history: conversationHistory.slice(-21, -1),
+        history: conversationHistory.slice(-20),
       }),
     });
 
@@ -224,11 +217,6 @@ async function handleSend() {
               if (chunkObj.chunk && typeof chunkObj.chunk === 'string') {
                 accumulatedText += chunkObj.chunk;
                 scheduleRender();
-                if (!firstChunkReceived) {
-                  const ttft = performance.now() - requestStartTime;
-                  console.log(`[AXIOM] Time to First Token: ${ttft.toFixed(2)}ms`);
-                  firstChunkReceived = true;
-                }
               }
               if (chunkObj.error) {
                 streamDone = true;
@@ -242,10 +230,6 @@ async function handleSend() {
         }
       }
     }
-
-    // Total generation time from request sent to stream complete
-    const totalTime = performance.now() - requestStartTime;
-    console.log(`[AXIOM] Total generation time: ${totalTime.toFixed(2)}ms`);
 
     // Final render with full markdown - no truncation
     streamContent.innerHTML = renderMarkdown(accumulatedText);

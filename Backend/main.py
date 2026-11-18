@@ -6,14 +6,13 @@ Verified NVIDIA docs: https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-
 import os
 import json
 import logging
-import time
-from typing import List, Optional
+from typing import List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from pydantic import BaseModel, Field, field_validator
-import httpx
+import requests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("axiom")
@@ -21,7 +20,7 @@ logger = logging.getLogger("axiom")
 app = FastAPI(
     title="AXIOM — Streaming + Markdown",
     description="Modern AI chatbot with NVIDIA Nemotron 3 Ultra streaming and safe Markdown rendering.",
-    version="4.1.0",
+    version="4.0.0",
 )
 
 app.add_middleware(
@@ -37,26 +36,6 @@ NVIDIA_MODEL_ID = "nvidia/nemotron-3-ultra-550b-a55b"
 NVIDIA_INFERENCE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Shared HTTPX async client for connection reuse across requests
-_http_client: Optional[httpx.AsyncClient] = None
-
-
-@app.on_event("startup")
-async def _startup():
-    global _http_client
-    _http_client = httpx.AsyncClient(
-        timeout=httpx.Timeout(connect=10.0, read=60.0),
-    )
-
-
-@app.on_event("shutdown")
-async def _shutdown():
-    global _http_client
-    if _http_client is not None:
-        await _http_client.aclose()
-        _http_client = None
-
 
 # =====================================================================
 # PYDANTIC MODELS
@@ -105,7 +84,7 @@ async def serve_js():
 async def chat_endpoint(request: ChatRequest):
     """
     Stream NVIDIA Nemotron 3 Ultra responses as Server-Sent Events.
-    Uses async HTTPX with aiter_lines() for non-blocking streaming.
+    Uses stream=True with OpenAI-compatible chunk format.
     Configures max_tokens at the provider's actual maximum (4096)
     for the NVIDIA Nemotron 3 Ultra 550B model.
     """
@@ -124,22 +103,12 @@ async def chat_endpoint(request: ChatRequest):
             media_type="text/event-stream",
         )
 
-    # Record when the backend started processing this request
-    request_start = time.perf_counter()
-
     messages = [
         {"role": "system", "content": "You are AXIOM, a modern, helpful AI assistant."}
     ]
     for item in request.history:
         messages.append({"role": item.role, "content": item.content})
-    # Defensive fix: do not append the latest user message if it is already
-    # the last item in history (prevents duplicate user messages in the payload).
-    if not (
-        messages
-        and messages[-1]["role"] == "user"
-        and messages[-1]["content"] == request.message
-    ):
-        messages.append({"role": "user", "content": request.message})
+    messages.append({"role": "user", "content": request.message})
 
     payload = {
         "model": NVIDIA_MODEL_ID,
@@ -155,27 +124,29 @@ async def chat_endpoint(request: ChatRequest):
     }
 
     try:
-        resp = await _http_client.post(
+        resp = requests.post(
             NVIDIA_INFERENCE_URL,
             headers=headers,
             json=payload,
+            stream=True,
+            timeout=60.0,
         )
         resp.raise_for_status()
-    except httpx.TimeoutException:
+    except requests.exceptions.Timeout:
         logger.error("NVIDIA timeout")
         def err_gen():
             yield f"data: {json.dumps({'error': 'Timeout'})}\n\n"
         return StreamingResponse(err_gen(), media_type="text/event-stream")
-    except httpx.ConnectError:
+    except requests.exceptions.ConnectionError:
         logger.error("NVIDIA connection error")
         def err_gen():
             yield f"data: {json.dumps({'error': 'Connection error'})}\n\n"
         return StreamingResponse(err_gen(), media_type="text/event-stream")
-    except httpx.HTTPStatusError as exc:
-        status = exc.response.status_code if exc.response else 500
+    except requests.exceptions.HTTPError as exc:
+        status = resp.status_code if 'resp' in locals() else 500
         detail_text = "API error"
         try:
-            detail_text = exc.response.json().get("message", exc.response.text[:200])
+            detail_text = resp.json().get("message", resp.text[:200])
         except Exception:
             pass
         msg = f"NVIDIA API error ({status}): {detail_text}"
@@ -193,13 +164,9 @@ async def chat_endpoint(request: ChatRequest):
             yield f"data: {json.dumps({'error': 'Unexpected error'})}\n\n"
         return StreamingResponse(err_gen(), media_type="text/event-stream")
 
-    ttft_measured = False
-    first_chunk_time: Optional[float] = None
-
-    async def stream_generator():
-        nonlocal ttft_measured, first_chunk_time
+    def stream_generator():
         try:
-            async for line in resp.aiter_lines():
+            for line in resp.iter_lines():
                 if not line:
                     continue
                 line_str = line.decode("utf-8") if isinstance(line, bytes) else line
@@ -215,33 +182,11 @@ async def chat_endpoint(request: ChatRequest):
                             delta = choices[0].get("delta", {})
                             content = delta.get("content", "")
                             if content is not None and content != "":
-                                # Time to First Token measurement
-                                if not ttft_measured:
-                                    first_chunk_time = time.perf_counter()
-                                    ttft = first_chunk_time - request_start
-                                    total_backend = time.perf_counter() - request_start
-                                    logger.info(
-                                        "TTFT=%.3fs backend_total=%.3fs msg_len=%d",
-                                        ttft, total_backend, len(request.message),
-                                    )
-                                    ttft_measured = True
                                 yield f"data: {json.dumps({'chunk': content})}\n\n"
                     except json.JSONDecodeError:
                         pass
             yield "data: [DONE]\n\n"
-        except Exception as exc:
-            logger.error("Stream error: %s", exc)
-            yield f"data: {json.dumps({'error': 'Stream interrupted'})}\n\n"
         finally:
-            # Ensure the upstream HTTPX response is closed to prevent resource leaks
-            try:
-                await resp.aclose()
-            except Exception:
-                pass
-            total_duration = time.perf_counter() - request_start
-            logger.info(
-                "backend_total_duration=%.3fs msg_len=%d",
-                total_duration, len(request.message),
-            )
+            resp.close()
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
