@@ -85,9 +85,9 @@ function handleDeleteModalKeydown(e) {
 }
 
 function handleDeleteConfirm(conversationId) {
-  deleteConversation(conversationId).then((success) => {
-    if (!success) {
-      showErrorToast('Failed to delete conversation. Please try again.');
+  deleteConversation(conversationId).then((result) => {
+    if (!result.success) {
+      showErrorToast(result.error || 'Failed to delete conversation. Please try again.');
     }
   });
 }
@@ -116,15 +116,21 @@ function createRenameModal() {
 
   const doRename = async () => {
     const newTitle = input.value.trim();
-    if (!newTitle || !pendingRenameId) {
+    if (!pendingRenameId) {
       closeRenameModal();
       return;
     }
-    closeRenameModal();
+    if (!newTitle) {
+      showErrorToast('Title cannot be empty.');
+      input.focus();
+      return;
+    }
     const success = await renameConversation(pendingRenameId, newTitle);
     if (!success) {
-      showErrorToast('Failed to rename conversation.');
+      showErrorToast('Failed to rename conversation. Please try again.');
+      return;
     }
+    closeRenameModal();
     pendingRenameId = null;
   };
 
@@ -174,6 +180,9 @@ function showErrorToast(message) {
 
 function closeAllDropdowns() {
   document.querySelectorAll('.conv-dropdown').forEach((d) => d.classList.remove('active'));
+  document.querySelectorAll('.conv-menu-btn').forEach((btn) => {
+    btn.style.display = '';
+  });
   openDropdownId = null;
 }
 
@@ -189,6 +198,7 @@ function toggleDropdown(conversationId, btn) {
 
   dropdown.classList.add('active');
   openDropdownId = conversationId;
+  btn.style.display = 'flex';
 }
 
 /* ============================================
@@ -308,12 +318,18 @@ async function createConversation(firstMessage = null) {
 
 async function renameConversation(conversationId, newTitle) {
   try {
-    const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: newTitle }),
-    });
-    if (!response.ok) return false;
+    const response = await fetch(
+      `${API_BASE}/conversations/${conversationId}?session_id=${encodeURIComponent(sessionId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      }
+    );
+    if (!response.ok) {
+      loggerWarn('Rename failed:', response.status);
+      return false;
+    }
     await renderConversationList();
     return true;
   } catch (err) {
@@ -328,7 +344,16 @@ async function deleteConversation(conversationId) {
       `${API_BASE}/conversations/${conversationId}?session_id=${encodeURIComponent(sessionId)}`,
       { method: 'DELETE' }
     );
-    if (!response.ok) return false;
+    if (!response.ok) {
+      let errorMsg = 'Failed to delete conversation.';
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.detail || errorData.message || errorMsg;
+      } catch (e) {
+        // Use default message
+      }
+      return { success: false, error: errorMsg };
+    }
 
     const wasActive = activeConversationId === conversationId;
 
@@ -350,10 +375,10 @@ async function deleteConversation(conversationId) {
       }
     }
 
-    return true;
+    return { success: true };
   } catch (err) {
     loggerWarn('Failed to delete conversation:', err);
-    return false;
+    return { success: false, error: err.message || 'Failed to delete conversation.' };
   }
 }
 
@@ -427,6 +452,12 @@ async function renderConversationList() {
     menuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleDropdown(conv.id, menuBtn);
+    });
+
+    // Touch device support: show menu button on touch
+    item.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      menuBtn.style.display = 'flex';
     });
 
     // Dropdown menu
@@ -849,23 +880,14 @@ sidebarToggle.addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', async () => {
   messageInput.focus();
 
-  // Initialize session
+  // Initialize session (preserve anonymous session ID across refreshes)
   sessionId = getOrCreateSessionId();
 
-  // Restore conversation from localStorage
-  const storedConvId = localStorage.getItem('axiom_active_conversation_id');
-  if (storedConvId) {
-    const loaded = await loadConversation(storedConvId);
-    if (!loaded) {
-      // Stored conversation ID is invalid or not accessible
-      localStorage.removeItem('axiom_active_conversation_id');
-      activeConversationId = null;
-      showWelcomeScreen();
-    }
-  } else {
-    showWelcomeScreen();
-  }
+  // Always start with welcome screen on refresh — do not auto-open previous conversation
+  activeConversationId = null;
+  localStorage.removeItem('axiom_active_conversation_id');
+  showWelcomeScreen();
 
-  // Render conversation list in sidebar
+  // Render conversation list in sidebar (but don't auto-open any conversation)
   await renderConversationList();
 });

@@ -497,7 +497,8 @@ body {
   transition: all var(--transition);
 }
 
-.conversation-item:hover .conv-menu-btn {
+.conversation-item:hover .conv-menu-btn,
+.conversation-item.touching .conv-menu-btn {
   display: flex;
 }
 
