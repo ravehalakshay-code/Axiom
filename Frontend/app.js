@@ -23,6 +23,7 @@ let isWelcomeScreen = true;
 let sessionId = null;
 let activeConversationId = null;
 let pendingDeleteId = null;
+let pendingRenameId = null;
 
 /* ============================================
    CUSTOM MODALS & TOASTS (no alert/confirm/prompt)
@@ -113,8 +114,6 @@ function createRenameModal() {
   const saveBtn = overlay.querySelector('#rename-save');
   const cancelBtn = overlay.querySelector('#rename-cancel');
 
-  let pendingRenameId = null;
-
   const doRename = async () => {
     const newTitle = input.value.trim();
     if (!newTitle || !pendingRenameId) {
@@ -147,6 +146,7 @@ function createRenameModal() {
 function openRenameModal(conversationId, currentTitle) {
   const modal = createRenameModal();
   const input = modal.overlay.querySelector('#rename-input');
+  pendingRenameId = conversationId;
   input.value = currentTitle;
   input.select();
   modal.overlay.classList.add('active');

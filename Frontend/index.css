@@ -535,6 +535,7 @@ body {
 
 .conversation-item {
   position: relative;
+  z-index: 100;
 }
 
 .conv-dropdown-item {
@@ -731,7 +732,6 @@ body {
   gap: 2px;
   padding: 0;
   flex: 1;
-  overflow-y: auto;
 }
 
 .conversation-item {
