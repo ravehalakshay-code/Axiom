@@ -516,9 +516,7 @@ body {
 
 /* ----- Dropdown Menu ----- */
 .conv-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
+  position: fixed;
   min-width: 140px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -526,7 +524,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 6px 0;
   display: none;
-  z-index: 200;
+  z-index: 1000;
   flex-direction: column;
 }
 

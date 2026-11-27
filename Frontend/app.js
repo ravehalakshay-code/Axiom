@@ -196,6 +196,13 @@ function toggleDropdown(conversationId, btn) {
   const dropdown = document.getElementById(`conv-dropdown-${conversationId}`);
   if (!dropdown) return;
 
+  // Use fixed positioning to escape #sidebarNav's overflow-y: auto clipping
+  const rect = btn.getBoundingClientRect();
+  dropdown.style.position = 'fixed';
+  dropdown.style.left = `${Math.floor(rect.right)}px`;
+  dropdown.style.top = `${Math.floor(rect.bottom)}px`;
+  dropdown.style.zIndex = '1000';
+
   dropdown.classList.add('active');
   openDropdownId = conversationId;
   btn.style.display = 'flex';
@@ -508,6 +515,9 @@ document.addEventListener('click', (e) => {
     closeAllDropdowns();
   }
 });
+
+// Close dropdowns when scrolling (fixed-position dropdowns don't move with scroll)
+document.addEventListener('scroll', closeAllDropdowns, true);
 
 function updateSidebarActiveState(conversationId) {
   const items = document.querySelectorAll('.conversation-item');
@@ -875,6 +885,7 @@ clearBtn.addEventListener('click', () => {
 });
 sidebarToggle.addEventListener('click', () => {
   sidebar.classList.toggle('collapsed');
+  closeAllDropdowns();
 });
 
 document.addEventListener('DOMContentLoaded', async () => {

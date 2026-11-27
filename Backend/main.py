@@ -434,21 +434,34 @@ async def delete_conversation(conversation_id: str, session_id: str):
     """Delete a conversation and all its messages (session ownership verified)."""
     conn = get_db()
     try:
-        if not verify_conversation_ownership(conn, conversation_id, session_id):
+        # First check if the conversation exists at all
+        conv_row = conn.execute(
+            "SELECT id, session_id FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+        if not conv_row:
+            logger.warning(f"Delete failed: conversation {conversation_id} not found in database")
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Then check session ownership
+        if conv_row["session_id"] != session_id:
+            logger.warning(
+                f"Delete failed: conversation {conversation_id} owned by session "
+                f"{conv_row['session_id']}, requested by session {session_id}"
+            )
             raise HTTPException(
-                status_code=403, detail="Conversation not found or access denied"
+                status_code=403,
+                detail="Access denied: conversation belongs to another session",
             )
 
-        conn.execute(
-            "DELETE FROM conversations WHERE id = ?",
-            (conversation_id,),
-        )
+        conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
         conn.commit()
+        logger.info(f"Deleted conversation {conversation_id} and associated messages")
         return {"status": "deleted", "id": conversation_id}
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Failed to delete conversation: %s", exc)
+        logger.error(f"Failed to delete conversation {conversation_id}: {exc}")
         raise HTTPException(status_code=500, detail="Could not delete conversation")
     finally:
         conn.close()
