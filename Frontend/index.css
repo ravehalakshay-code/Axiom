@@ -450,6 +450,49 @@ body {
   transform: scale(0.96);
 }
 
+/* ----- Copy Button (assistant messages only) ----- */
+.message {
+  position: relative;
+}
+
+.msg-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition), border-color var(--transition), color var(--transition), background var(--transition);
+  pointer-events: none;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.message:hover .msg-copy-btn {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.msg-copy-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--fill);
+}
+
+.msg-copy-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 /* ----- Animations ----- */
 @keyframes fadeIn {
   from {

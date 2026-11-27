@@ -24,6 +24,7 @@ let isWelcomeScreen = true;
 
 function getTimeBasedGreeting() {
   const hour = new Date().getHours();
+  if (hour >= 0 && hour < 5) return 'Burning the midnight oil?';
   if (hour >= 5 && hour < 12) return 'Good Morning';
   if (hour >= 12 && hour < 17) return 'Good Afternoon';
   return 'Good Evening';
@@ -87,6 +88,25 @@ function addMessage(text, sender) {
 
   msg.appendChild(label);
   msg.appendChild(content);
+
+  if (sender === 'assistant') {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-copy-btn';
+    copyBtn.setAttribute('aria-label', 'Copy response');
+    copyBtn.setAttribute('title', 'Copy response');
+    copyBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+    `;
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyToClipboard(text, copyBtn);
+    });
+    msg.appendChild(copyBtn);
+  }
+
   chatWindow.appendChild(msg);
   chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
 }
@@ -128,6 +148,50 @@ function autoResizeTextarea() {
 
 function showErrorMessage(errorMsg) {
   addMessage(errorMsg, 'assistant');
+}
+
+/* ============================================
+   COPY TO CLIPBOARD
+============================================ */
+
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showCopyConfirmation(btn);
+  } catch (err) {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '-9999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showCopyConfirmation(btn);
+    } catch (fallbackErr) {
+      alert('Failed to copy response to clipboard.');
+    }
+  }
+}
+
+function showCopyConfirmation(btn) {
+  const originalHtml = btn.innerHTML;
+  const originalTitle = btn.title;
+  btn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
+  `;
+  btn.title = 'Copied!';
+  btn.style.color = 'var(--accent)';
+  setTimeout(() => {
+    btn.innerHTML = originalHtml;
+    btn.title = originalTitle;
+    btn.style.color = '';
+  }, 1500);
 }
 
 /* ============================================
