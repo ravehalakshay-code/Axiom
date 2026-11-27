@@ -88,25 +88,6 @@ function addMessage(text, sender) {
 
   msg.appendChild(label);
   msg.appendChild(content);
-
-  if (sender === 'assistant') {
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'msg-copy-btn';
-    copyBtn.setAttribute('aria-label', 'Copy response');
-    copyBtn.setAttribute('title', 'Copy response');
-    copyBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-      </svg>
-    `;
-    copyBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      copyToClipboard(text, copyBtn);
-    });
-    msg.appendChild(copyBtn);
-  }
-
   chatWindow.appendChild(msg);
   chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
 }
@@ -148,6 +129,28 @@ function autoResizeTextarea() {
 
 function showErrorMessage(errorMsg) {
   addMessage(errorMsg, 'assistant');
+}
+
+/* ============================================
+   COPY BUTTON HELPER
+============================================ */
+
+function addCopyButton(msg, text) {
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'msg-copy-btn';
+  copyBtn.setAttribute('aria-label', 'Copy response');
+  copyBtn.setAttribute('title', 'Copy response');
+  copyBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+  `;
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(text, copyBtn);
+  });
+  msg.appendChild(copyBtn);
 }
 
 /* ============================================
@@ -298,6 +301,9 @@ async function handleSend() {
     // Final render with full markdown - no truncation
     streamContent.innerHTML = renderMarkdown(accumulatedText);
     chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
+
+    // Add Copy button to the completed assistant response
+    addCopyButton(assistantMsg, accumulatedText);
 
     if (accumulatedText.trim()) {
       conversationHistory.push({ role: 'assistant', content: accumulatedText });

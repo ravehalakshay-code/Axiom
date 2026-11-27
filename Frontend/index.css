@@ -451,14 +451,10 @@ body {
 }
 
 /* ----- Copy Button (assistant messages only) ----- */
-.message {
-  position: relative;
-}
-
 .msg-copy-btn {
-  position: absolute;
-  top: 8px;
-  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 26px;
   height: 26px;
   border-radius: 6px;
@@ -466,19 +462,10 @@ body {
   background: var(--surface);
   color: var(--text-muted);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity var(--transition), border-color var(--transition), color var(--transition), background var(--transition);
-  pointer-events: none;
+  margin-top: 8px;
+  transition: border-color var(--transition), color var(--transition), background var(--transition);
   padding: 0;
   flex-shrink: 0;
-}
-
-.message:hover .msg-copy-btn {
-  opacity: 1;
-  pointer-events: all;
 }
 
 .msg-copy-btn:hover {
