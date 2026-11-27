@@ -110,6 +110,78 @@ def verify_conversation_ownership(
 
 
 # =====================================================================
+# TITLE GENERATION
+# =====================================================================
+
+_STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "can", "must", "shall", "i", "me", "my",
+    "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
+    "yourself", "yourselves", "he", "him", "his", "himself", "she", "her",
+    "hers", "herself", "it", "its", "itself", "they", "them", "their",
+    "theirs", "themselves", "what", "which", "who", "whom", "whose",
+    "where", "when", "why", "how", "all", "any", "both", "each", "few",
+    "more", "most", "other", "some", "such", "no", "nor", "not", "only",
+    "own", "same", "so", "than", "too", "very", "just", "also", "now",
+    "then", "here", "there", "when", "where", "why", "how", "please",
+    "help", "tell", "show", "give", "explain", "describe", "can you",
+    "could you", "would you", "do you", "did you", "does it",
+}
+
+_QUESTION_STARTS = {
+    "what", "how", "why", "where", "when", "who", "which", "can", "could",
+    "would", "should", "do", "does", "did", "is", "are", "was", "were",
+    "will", "may", "might", "please", "tell", "explain", "describe",
+    "help", "show", "give",
+}
+
+
+def generate_title(first_message: str) -> str:
+    """Generate a concise conversation title (3-7 words) from the first user message.
+
+    Uses lightweight keyword extraction - no NVIDIA API call needed.
+    Falls back to 'New Conversation' if the message is too short or unclear.
+    """
+    if not first_message or not first_message.strip():
+        return "New Conversation"
+
+    text = first_message.strip()
+
+    # Remove trailing punctuation and question marks
+    text = text.rstrip("?.!")
+
+    # Split into words, remove punctuation
+    raw_words = text.split()
+    words = []
+    for w in raw_words:
+        clean = w.strip('",.;:()[]{}').lower()
+        if clean and clean not in _STOP_WORDS:
+            words.append(clean)
+
+    # If message starts with a question word, skip it
+    if words and words[0] in _QUESTION_STARTS:
+        words = words[1:]
+
+    if not words:
+        return "New Conversation"
+
+    # Take 3-7 meaningful words
+    title_words = words[:7]
+
+    # Capitalize each word
+    title = " ".join(w.capitalize() for w in title_words)
+
+    # Ensure title is not too short (less than 3 meaningful words)
+    if len(title_words) < 3 and len(text) >= 10:
+        # Use first few words of original message as fallback
+        fallback_words = raw_words[:5]
+        title = " ".join(w.strip('",.;:()[]{}').capitalize() for w in fallback_words if w.strip('",.;:()[]{}'))
+
+    return title if title else "New Conversation"
+
+
+# =====================================================================
 # PYDANTIC MODELS
 # =====================================================================
 
@@ -139,6 +211,9 @@ class ChatRequest(BaseModel):
 class ConversationCreate(BaseModel):
     session_id: str = Field(..., description="Anonymous session identifier")
     title: str = Field(default="New Conversation", min_length=1)
+    first_message: Optional[str] = Field(
+        None, description="First user message for auto title generation"
+    )
 
 
 class ConversationResponse(BaseModel):
@@ -198,18 +273,22 @@ async def create_conversation(payload: ConversationCreate):
     try:
         conv_id = str(uuid.uuid4())
         created = now_iso()
+        # Auto-generate title from first message if title is default
+        title = payload.title
+        if (title == "New Conversation" or not title.strip()) and payload.first_message:
+            title = generate_title(payload.first_message)
         conn.execute(
             """
             INSERT INTO conversations (id, session_id, title, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (conv_id, payload.session_id, payload.title, created, created),
+            (conv_id, payload.session_id, title, created, created),
         )
         conn.commit()
         return ConversationResponse(
             id=conv_id,
             session_id=payload.session_id,
-            title=payload.title,
+            title=title,
             created_at=created,
             updated_at=created,
         )
@@ -414,10 +493,10 @@ async def chat_endpoint(request: ChatRequest):
                     detail="Conversation not found or access denied",
                 )
         else:
-            # Create a new conversation
+            # Create a new conversation with auto-generated title
             conv_id = str(uuid.uuid4())
             created = now_iso()
-            title = request.message[:50] + ("..." if len(request.message) > 50 else "")
+            title = generate_title(request.message)
             conn.execute(
                 """
                 INSERT INTO conversations (id, session_id, title, created_at, updated_at)

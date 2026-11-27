@@ -22,6 +22,174 @@ let isSending = false;
 let isWelcomeScreen = true;
 let sessionId = null;
 let activeConversationId = null;
+let pendingDeleteId = null;
+
+/* ============================================
+   CUSTOM MODALS & TOASTS (no alert/confirm/prompt)
+============================================ */
+
+let deleteModal = null;
+let renameModal = null;
+let openDropdownId = null;
+
+function createDeleteModal() {
+  if (deleteModal) return deleteModal;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+      <h2 id="delete-modal-title" class="modal-title">Delete conversation?</h2>
+      <p class="modal-description">This conversation and all its messages will be permanently deleted. This action cannot be undone.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="delete-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete-confirm">Delete</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector('#delete-cancel').addEventListener('click', closeDeleteModal);
+  overlay.querySelector('#delete-confirm').addEventListener('click', () => {
+    if (pendingDeleteId) {
+      closeDeleteModal();
+      handleDeleteConfirm(pendingDeleteId);
+      pendingDeleteId = null;
+    }
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeDeleteModal();
+  });
+
+  document.body.appendChild(overlay);
+  deleteModal = overlay;
+  return deleteModal;
+}
+
+function openDeleteModal(conversationId) {
+  createDeleteModal();
+  pendingDeleteId = conversationId;
+  deleteModal.classList.add('active');
+  document.addEventListener('keydown', handleDeleteModalKeydown);
+}
+
+function closeDeleteModal() {
+  if (!deleteModal) return;
+  deleteModal.classList.remove('active');
+  pendingDeleteId = null;
+  document.removeEventListener('keydown', handleDeleteModalKeydown);
+}
+
+function handleDeleteModalKeydown(e) {
+  if (e.key === 'Escape') closeDeleteModal();
+}
+
+function handleDeleteConfirm(conversationId) {
+  deleteConversation(conversationId).then((success) => {
+    if (!success) {
+      showErrorToast('Failed to delete conversation. Please try again.');
+    }
+  });
+}
+
+function createRenameModal() {
+  if (renameModal) return renameModal;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rename-modal-title">
+      <h2 id="rename-modal-title" class="modal-title">Rename conversation</h2>
+      <div class="modal-actions">
+        <input type="text" id="rename-input" class="rename-input" placeholder="Enter title" maxlength="100" />
+      </div>
+      <div class="modal-actions rename-actions">
+        <button type="button" class="btn btn-secondary" id="rename-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="rename-save">Save</button>
+      </div>
+    </div>
+  `;
+
+  const input = overlay.querySelector('#rename-input');
+  const saveBtn = overlay.querySelector('#rename-save');
+  const cancelBtn = overlay.querySelector('#rename-cancel');
+
+  let pendingRenameId = null;
+
+  const doRename = async () => {
+    const newTitle = input.value.trim();
+    if (!newTitle || !pendingRenameId) {
+      closeRenameModal();
+      return;
+    }
+    closeRenameModal();
+    const success = await renameConversation(pendingRenameId, newTitle);
+    if (!success) {
+      showErrorToast('Failed to rename conversation.');
+    }
+    pendingRenameId = null;
+  };
+
+  saveBtn.addEventListener('click', doRename);
+  cancelBtn.addEventListener('click', closeRenameModal);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doRename();
+    if (e.key === 'Escape') closeRenameModal();
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeRenameModal();
+  });
+
+  document.body.appendChild(overlay);
+  renameModal = overlay;
+  return { overlay, input, saveBtn, cancelBtn };
+}
+
+function openRenameModal(conversationId, currentTitle) {
+  const modal = createRenameModal();
+  const input = modal.overlay.querySelector('#rename-input');
+  input.value = currentTitle;
+  input.select();
+  modal.overlay.classList.add('active');
+}
+
+function closeRenameModal() {
+  if (!renameModal) return;
+  renameModal.overlay.classList.remove('active');
+  renameModal.input.value = '';
+}
+
+function showErrorToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 10);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.conv-dropdown').forEach((d) => d.classList.remove('active'));
+  openDropdownId = null;
+}
+
+function toggleDropdown(conversationId, btn) {
+  if (openDropdownId === conversationId) {
+    closeAllDropdowns();
+    return;
+  }
+  closeAllDropdowns();
+
+  const dropdown = document.getElementById(`conv-dropdown-${conversationId}`);
+  if (!dropdown) return;
+
+  dropdown.classList.add('active');
+  openDropdownId = conversationId;
+}
 
 /* ============================================
    SESSION MANAGEMENT
@@ -114,12 +282,16 @@ async function loadConversation(conversationId) {
   }
 }
 
-async function createConversation(title = 'New Conversation') {
+async function createConversation(firstMessage = null) {
   try {
     const response = await fetch(`${API_BASE}/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, title }),
+      body: JSON.stringify({
+        session_id: sessionId,
+        title: 'New Conversation',
+        first_message: firstMessage,
+      }),
     });
     if (!response.ok) return null;
     const data = await response.json();
@@ -158,12 +330,26 @@ async function deleteConversation(conversationId) {
     );
     if (!response.ok) return false;
 
-    if (activeConversationId === conversationId) {
+    const wasActive = activeConversationId === conversationId;
+
+    if (wasActive) {
       activeConversationId = null;
       localStorage.removeItem('axiom_active_conversation_id');
     }
 
     await renderConversationList();
+
+    // If the deleted conversation was active, open another or show welcome screen
+    if (wasActive) {
+      const conversations = await fetchConversations();
+      if (conversations.length > 0) {
+        await loadConversation(conversations[0].id);
+      } else {
+        clearConversation();
+        showWelcomeScreen();
+      }
+    }
+
     return true;
   } catch (err) {
     loggerWarn('Failed to delete conversation:', err);
@@ -226,81 +412,71 @@ async function renderConversationList() {
     titleSpan.style.textOverflow = 'ellipsis';
     titleSpan.style.whiteSpace = 'nowrap';
 
-    const btnContainer = document.createElement('div');
-    btnContainer.style.display = 'flex';
-    btnContainer.style.gap = '4px';
-
-    const openBtn = document.createElement('button');
-    openBtn.className = 'conv-action-btn conv-open-btn';
-    openBtn.setAttribute('aria-label', 'Open conversation');
-    openBtn.setAttribute('title', 'Open conversation');
-    openBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
+    // Three-dot menu button (hidden until hover)
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'conv-menu-btn';
+    menuBtn.setAttribute('aria-label', 'More options');
+    menuBtn.setAttribute('title', 'More options');
+    menuBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <circle cx="12" cy="12" r="1"/>
+        <circle cx="12" cy="5" r="1"/>
+        <circle cx="12" cy="19" r="1"/>
       </svg>
     `;
-    openBtn.addEventListener('click', (e) => {
+    menuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      loadConversation(conv.id);
+      toggleDropdown(conv.id, menuBtn);
     });
 
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'conv-action-btn conv-rename-btn';
-    renameBtn.setAttribute('aria-label', 'Rename conversation');
-    renameBtn.setAttribute('title', 'Rename conversation');
-    renameBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-      </svg>
-    `;
-    renameBtn.addEventListener('click', async (e) => {
+    // Dropdown menu
+    const dropdown = document.createElement('div');
+    dropdown.className = 'conv-dropdown';
+    dropdown.id = `conv-dropdown-${conv.id}`;
+
+    const renameItem = document.createElement('div');
+    renameItem.className = 'conv-dropdown-item';
+    renameItem.setAttribute('role', 'menuitem');
+    renameItem.textContent = 'Rename';
+    renameItem.addEventListener('click', (e) => {
       e.stopPropagation();
-      const newTitle = prompt('Enter new conversation title:', conv.title);
-      if (newTitle && newTitle.trim()) {
-        await renameConversation(conv.id, newTitle.trim());
-      }
+      closeAllDropdowns();
+      openRenameModal(conv.id, conv.title);
     });
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'conv-action-btn conv-delete-btn';
-    deleteBtn.setAttribute('aria-label', 'Delete conversation');
-    deleteBtn.setAttribute('title', 'Delete conversation');
-    deleteBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
-        <polyline points="3 6 5 6 21 6"/>
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-      </svg>
-    `;
-    deleteBtn.addEventListener('click', async (e) => {
+    const deleteItem = document.createElement('div');
+    deleteItem.className = 'conv-dropdown-item';
+    deleteItem.setAttribute('role', 'menuitem');
+    deleteItem.textContent = 'Delete';
+    deleteItem.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (!confirm('Delete this conversation?')) return;
-      const wasActive = activeConversationId === conv.id;
-      const success = await deleteConversation(conv.id);
-      if (success && wasActive) {
-        clearConversation();
-        showWelcomeScreen();
-      }
+      closeAllDropdowns();
+      openDeleteModal(conv.id);
     });
 
-    btnContainer.appendChild(openBtn);
-    btnContainer.appendChild(renameBtn);
-    btnContainer.appendChild(deleteBtn);
+    dropdown.appendChild(renameItem);
+    dropdown.appendChild(deleteItem);
 
     item.appendChild(titleSpan);
-    item.appendChild(btnContainer);
+    item.appendChild(menuBtn);
+    item.appendChild(dropdown);
 
-    // Click on title area to open conversation
+    // Click on title area to open conversation (not on menu/dropdown)
     item.addEventListener('click', (e) => {
-      if (e.target === openBtn || e.target === renameBtn || e.target === deleteBtn ||
-          e.target.closest('.conv-action-btn')) return;
+      if (e.target === menuBtn || e.target.closest('.conv-dropdown') ||
+          e.target.closest('.conv-menu-btn')) return;
       loadConversation(conv.id);
     });
 
     convList.appendChild(item);
   }
 }
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.conv-dropdown') && !e.target.closest('.conv-menu-btn')) {
+    closeAllDropdowns();
+  }
+});
 
 function updateSidebarActiveState(conversationId) {
   const items = document.querySelectorAll('.conversation-item');
@@ -481,7 +657,7 @@ async function copyToClipboard(text, btn) {
       document.body.removeChild(textArea);
       showCopyConfirmation(btn);
     } catch (fallbackErr) {
-      alert('Failed to copy response to clipboard.');
+      showErrorToast('Failed to copy response to clipboard.');
     }
   }
 }
@@ -546,7 +722,7 @@ async function handleSend() {
   try {
     // Ensure we have an active conversation for persistence
     if (!activeConversationId) {
-      const created = await createConversation();
+      const created = await createConversation(text);
       if (!created) {
         showErrorMessage("Oops! Could not create conversation.");
         isSending = false;
