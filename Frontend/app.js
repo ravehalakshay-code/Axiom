@@ -158,8 +158,8 @@ function createRenameModal() {
   });
 
   document.body.appendChild(overlay);
-  renameModal = overlay;
-  return { overlay, input, saveBtn, cancelBtn, closeBtn };
+  renameModal = { overlay, input, saveBtn, cancelBtn, closeBtn };
+  return renameModal;
 }
 
 function openRenameModal(conversationId, currentTitle) {
