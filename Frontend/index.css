@@ -450,138 +450,6 @@ body {
   transform: scale(0.96);
 }
 
-/* ----- Stop Button ----- */
-.stop-btn {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  border-radius: var(--radius-button);
-  border: none;
-  background: #ef4444;
-  color: #ffffff;
-  font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  touch-action: manipulation;
-  transition: background var(--transition), transform var(--transition);
-  display: none;
-}
-
-.stop-btn:hover {
-  background: #dc2626;
-}
-
-.stop-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.4);
-}
-
-.stop-btn:active {
-  transform: scale(0.96);
-}
-
-/* ----- Message Action Buttons (Copy / Regenerate) ----- */
-.message {
-  position: relative;
-}
-
-.message-actions {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  display: flex;
-  gap: 6px;
-  opacity: 0;
-  transition: opacity var(--transition);
-  pointer-events: none;
-}
-
-.message:hover .message-actions {
-  opacity: 1;
-  pointer-events: all;
-}
-
-.msg-action-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all var(--transition);
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.msg-action-btn:hover {
-  border-color: var(--text);
-  color: var(--text);
-  background: var(--fill);
-}
-
-.msg-action-btn:focus-visible {
-  outline: none;
-  border-color: var(--accent-soft);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
-.msg-action-btn.copy-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.msg-action-btn.regenerate-btn:hover {
-  color: var(--accent-soft);
-  border-color: var(--accent-soft);
-}
-
-@media (max-width: 768px) {
-  .stop-btn {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .message-actions {
-    top: 6px;
-    right: 8px;
-    gap: 4px;
-  }
-
-  .msg-action-btn {
-    width: 26px;
-    height: 26px;
-  }
-}
-
-@media (max-width: 480px) {
-  .stop-btn {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .message-actions {
-    top: 6px;
-    right: 8px;
-  }
-
-  .msg-action-btn {
-    width: 26px;
-    height: 26px;
-  }
-}
-
 /* ----- Animations ----- */
 @keyframes fadeIn {
   from {
@@ -597,7 +465,7 @@ body {
 /* ----- Markdown Content Styles ----- */
 .stream-content {
   font-family: var(--font-sans);
-  font-weight: 400;
+  font-weight: 0;
   color: var(--text);
 }
 
