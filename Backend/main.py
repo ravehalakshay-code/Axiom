@@ -477,9 +477,22 @@ async def delete_conversation(conversation_id: str, session_id: str):
                 detail="Access denied: conversation belongs to another session",
             )
 
-        conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+        # Delete the conversation (messages cascade via ON DELETE CASCADE)
+        cursor = conn.execute(
+            "DELETE FROM conversations WHERE id = ?",
+            (conversation_id,),
+        )
+        deleted_rows = cursor.rowcount
         conn.commit()
-        logger.info(f"Deleted conversation {conversation_id} and associated messages")
+
+        if deleted_rows == 0:
+            logger.warning(f"Delete failed: zero rows deleted for conversation {conversation_id}")
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        logger.info(
+            f"Deleted conversation {conversation_id} ({deleted_rows} row(s)) "
+            f"and associated messages for session {session_id}"
+        )
         return {"status": "deleted", "id": conversation_id}
     except HTTPException:
         raise

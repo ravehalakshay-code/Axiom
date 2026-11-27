@@ -52,8 +52,9 @@ function createDeleteModal() {
   overlay.querySelector('#delete-cancel').addEventListener('click', closeDeleteModal);
   overlay.querySelector('#delete-confirm').addEventListener('click', () => {
     if (pendingDeleteId) {
+      const convId = pendingDeleteId;
       closeDeleteModal();
-      handleDeleteConfirm(pendingDeleteId);
+      handleDeleteConfirm(convId);
       pendingDeleteId = null;
     }
   });
@@ -380,15 +381,49 @@ async function deleteConversation(conversationId) {
       `${API_BASE}/conversations/${conversationId}?session_id=${encodeURIComponent(sessionId)}`,
       { method: 'DELETE' }
     );
+
+    // Handle 204 No Content (empty body - cannot call response.json())
+    if (response.status === 204) {
+      const wasActive = activeConversationId === conversationId;
+
+      if (wasActive) {
+        activeConversationId = null;
+        localStorage.removeItem('axiom_active_conversation_id');
+      }
+
+      // Remove from sidebar immediately
+      await renderConversationList();
+
+      if (wasActive) {
+        const conversations = await fetchConversations();
+        if (conversations.length > 0) {
+          await loadConversation(conversations[0].id);
+        } else {
+          clearConversation();
+          showWelcomeScreen();
+        }
+      }
+
+      return { success: true };
+    }
+
     if (!response.ok) {
       let errorMsg = 'Failed to delete conversation.';
       try {
         const errorData = await response.json();
         errorMsg = errorData.detail || errorData.message || errorMsg;
       } catch (e) {
-        // Use default message (handles 204 No Content with empty body)
+        // Use default message (handles empty body)
       }
       return { success: false, error: errorMsg };
+    }
+
+    // 200 OK - parse response body
+    let responseData = {};
+    try {
+      responseData = await response.json();
+    } catch (e) {
+      responseData = {};
     }
 
     const wasActive = activeConversationId === conversationId;
@@ -398,29 +433,20 @@ async function deleteConversation(conversationId) {
       localStorage.removeItem('axiom_active_conversation_id');
     }
 
-    // Refresh UI, but don't fail the whole operation if refresh fails
-    try {
-      await renderConversationList();
-    } catch (renderErr) {
-      loggerWarn('Failed to refresh conversation list after delete:', renderErr);
-    }
+    // Remove from sidebar immediately after backend confirmation
+    await renderConversationList();
 
     if (wasActive) {
-      try {
-        const conversations = await fetchConversations();
-        if (conversations.length > 0) {
-          await loadConversation(conversations[0].id);
-        } else {
-          clearConversation();
-          showWelcomeScreen();
-        }
-      } catch (loadErr) {
-        loggerWarn('Failed to load conversation after delete:', loadErr);
+      const conversations = await fetchConversations();
+      if (conversations.length > 0) {
+        await loadConversation(conversations[0].id);
+      } else {
+        clearConversation();
         showWelcomeScreen();
       }
     }
 
-    return { success: true };
+    return { success: true, data: responseData };
   } catch (err) {
     loggerWarn('Failed to delete conversation:', err);
     return { success: false, error: err.message || 'Failed to delete conversation.' };
