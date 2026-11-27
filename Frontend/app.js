@@ -2,6 +2,8 @@
  * AXIOM — Streaming AI Chatbot with NVIDIA Nemotron 3 Ultra + Markdown
  */
 
+const API_BASE = 'https://axiom-90ie.onrender.com';
+
 const chatWindow = document.getElementById('chatWindow');
 const chatForm = document.getElementById('chatForm');
 const messageInput = document.getElementById('messageInput');
@@ -13,10 +15,26 @@ const sidebarToggle = document.getElementById('sidebarToggle');
 const welcomeScreen = document.getElementById('welcomeScreen');
 const timeGreeting = document.getElementById('timeGreeting');
 const chatArea = document.getElementById('chatArea');
+const sidebarNav = document.getElementById('sidebarNav');
 
 let conversationHistory = [];
 let isSending = false;
 let isWelcomeScreen = true;
+let sessionId = null;
+let activeConversationId = null;
+
+/* ============================================
+   SESSION MANAGEMENT
+============================================ */
+
+function getOrCreateSessionId() {
+  let sid = localStorage.getItem('axiom_session_id');
+  if (!sid) {
+    sid = crypto.randomUUID();
+    localStorage.setItem('axiom_session_id', sid);
+  }
+  return sid;
+}
 
 /* ============================================
    TIME-BASED GREETING
@@ -47,6 +65,252 @@ function hideWelcomeScreen() {
   if (chatArea) chatArea.classList.remove('welcome-mode');
   if (chatWindow) chatWindow.classList.add('active');
   isWelcomeScreen = false;
+}
+
+/* ============================================
+   CONVERSATION CRUD (frontend)
+============================================ */
+
+async function fetchConversations() {
+  try {
+    const response = await fetch(`${API_BASE}/conversations?session_id=${encodeURIComponent(sessionId)}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (err) {
+    loggerWarn('Failed to fetch conversations:', err);
+    return [];
+  }
+}
+
+async function loadConversation(conversationId) {
+  try {
+    const response = await fetch(
+      `${API_BASE}/conversations/${conversationId}?session_id=${encodeURIComponent(sessionId)}`
+    );
+    if (!response.ok) {
+      loggerWarn('Failed to load conversation:', response.status);
+      return null;
+    }
+    const data = await response.json();
+
+    clearConversation();
+
+    // Render previous messages
+    if (data.messages && data.messages.length > 0) {
+      for (const msg of data.messages) {
+        addMessage(msg.content, msg.role);
+      }
+    }
+
+    activeConversationId = conversationId;
+    localStorage.setItem('axiom_active_conversation_id', conversationId);
+
+    hideWelcomeScreen();
+    updateSidebarActiveState(conversationId);
+    return data;
+  } catch (err) {
+    loggerWarn('Error loading conversation:', err);
+    return null;
+  }
+}
+
+async function createConversation(title = 'New Conversation') {
+  try {
+    const response = await fetch(`${API_BASE}/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, title }),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    activeConversationId = data.id;
+    localStorage.setItem('axiom_active_conversation_id', data.id);
+    await renderConversationList();
+    updateSidebarActiveState(data.id);
+    return data;
+  } catch (err) {
+    loggerWarn('Failed to create conversation:', err);
+    return null;
+  }
+}
+
+async function renameConversation(conversationId, newTitle) {
+  try {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle }),
+    });
+    if (!response.ok) return false;
+    await renderConversationList();
+    return true;
+  } catch (err) {
+    loggerWarn('Failed to rename conversation:', err);
+    return false;
+  }
+}
+
+async function deleteConversation(conversationId) {
+  try {
+    const response = await fetch(
+      `${API_BASE}/conversations/${conversationId}?session_id=${encodeURIComponent(sessionId)}`,
+      { method: 'DELETE' }
+    );
+    if (!response.ok) return false;
+
+    if (activeConversationId === conversationId) {
+      activeConversationId = null;
+      localStorage.removeItem('axiom_active_conversation_id');
+    }
+
+    await renderConversationList();
+    return true;
+  } catch (err) {
+    loggerWarn('Failed to delete conversation:', err);
+    return false;
+  }
+}
+
+async function renderConversationList() {
+  if (!sidebarNav) return;
+  const conversations = await fetchConversations();
+
+  // Find existing conversation list element or create one
+  let convList = sidebarNav.querySelector('.conversation-list');
+  if (!convList) {
+    convList = document.createElement('div');
+    convList.className = 'conversation-list';
+    // Insert after the Clear button, before end of nav
+    const clearBtn = sidebarNav.querySelector('#clearBtn');
+    if (clearBtn && clearBtn.parentNode) {
+      clearBtn.parentNode.insertAdjacentElement('afterend', convList);
+    } else {
+      sidebarNav.appendChild(convList);
+    }
+  }
+
+  convList.innerHTML = '';
+
+  if (conversations.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'conversation-empty';
+    empty.textContent = 'No previous conversations';
+    empty.style.fontSize = '12px';
+    empty.style.color = 'var(--text-muted)';
+    empty.style.padding = '10px 14px';
+    convList.appendChild(empty);
+    return;
+  }
+
+  const header = document.createElement('div');
+  header.className = 'conversation-list-header';
+  header.textContent = 'Conversations';
+  header.style.fontSize = '11px';
+  header.style.fontWeight = '600';
+  header.style.letterSpacing = '0.5px';
+  header.style.textTransform = 'uppercase';
+  header.style.color = 'var(--text-muted)';
+  header.style.padding = '10px 14px';
+  convList.appendChild(header);
+
+  for (const conv of conversations) {
+    const item = document.createElement('div');
+    item.className = `conversation-item${activeConversationId === conv.id ? ' active' : ''}`;
+    item.dataset.id = conv.id;
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'conversation-title';
+    titleSpan.textContent = conv.title;
+    titleSpan.style.flex = '1';
+    titleSpan.style.overflow = 'hidden';
+    titleSpan.style.textOverflow = 'ellipsis';
+    titleSpan.style.whiteSpace = 'nowrap';
+
+    const btnContainer = document.createElement('div');
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '4px';
+
+    const openBtn = document.createElement('button');
+    openBtn.className = 'conv-action-btn conv-open-btn';
+    openBtn.setAttribute('aria-label', 'Open conversation');
+    openBtn.setAttribute('title', 'Open conversation');
+    openBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    `;
+    openBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      loadConversation(conv.id);
+    });
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'conv-action-btn conv-rename-btn';
+    renameBtn.setAttribute('aria-label', 'Rename conversation');
+    renameBtn.setAttribute('title', 'Rename conversation');
+    renameBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+    `;
+    renameBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const newTitle = prompt('Enter new conversation title:', conv.title);
+      if (newTitle && newTitle.trim()) {
+        await renameConversation(conv.id, newTitle.trim());
+      }
+    });
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'conv-action-btn conv-delete-btn';
+    deleteBtn.setAttribute('aria-label', 'Delete conversation');
+    deleteBtn.setAttribute('title', 'Delete conversation');
+    deleteBtn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('Delete this conversation?')) return;
+      const wasActive = activeConversationId === conv.id;
+      const success = await deleteConversation(conv.id);
+      if (success && wasActive) {
+        clearConversation();
+        showWelcomeScreen();
+      }
+    });
+
+    btnContainer.appendChild(openBtn);
+    btnContainer.appendChild(renameBtn);
+    btnContainer.appendChild(deleteBtn);
+
+    item.appendChild(titleSpan);
+    item.appendChild(btnContainer);
+
+    // Click on title area to open conversation
+    item.addEventListener('click', (e) => {
+      if (e.target === openBtn || e.target === renameBtn || e.target === deleteBtn ||
+          e.target.closest('.conv-action-btn')) return;
+      loadConversation(conv.id);
+    });
+
+    convList.appendChild(item);
+  }
+}
+
+function updateSidebarActiveState(conversationId) {
+  const items = document.querySelectorAll('.conversation-item');
+  items.forEach((item) => {
+    if (item.dataset.id === conversationId) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
 }
 
 /* ============================================
@@ -118,6 +382,8 @@ function clearConversation() {
 
 function startNewChat() {
   clearConversation();
+  activeConversationId = null;
+  localStorage.removeItem('axiom_active_conversation_id');
   showWelcomeScreen();
 }
 
@@ -129,6 +395,12 @@ function autoResizeTextarea() {
 
 function showErrorMessage(errorMsg) {
   addMessage(errorMsg, 'assistant');
+}
+
+function loggerWarn(...args) {
+  if (console && console.warn) {
+    console.warn('[AXIOM]', ...args);
+  }
 }
 
 /* ============================================
@@ -238,12 +510,26 @@ async function handleSend() {
   }
 
   try {
-    const response = await fetch('https://axiom-90ie.onrender.com/chat', {
+    // Ensure we have an active conversation for persistence
+    if (!activeConversationId) {
+      const created = await createConversation();
+      if (!created) {
+        showErrorMessage("Oops! Could not create conversation.");
+        isSending = false;
+        if (loadingMsg.parentNode) chatWindow.removeChild(loadingMsg);
+        if (assistantMsg.parentNode) chatWindow.removeChild(assistantMsg);
+        return;
+      }
+    }
+
+    const response = await fetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: text,
         history: conversationHistory.slice(-20),
+        session_id: sessionId,
+        conversation_id: activeConversationId,
       }),
     });
 
@@ -308,6 +594,11 @@ async function handleSend() {
     if (accumulatedText.trim()) {
       conversationHistory.push({ role: 'assistant', content: accumulatedText });
     }
+
+    // Update conversation title after first exchange if it's still default
+    if (conversationHistory.length === 2) {
+      // Title already set from first message on backend
+    }
   } catch (error) {
     if (loadingMsg.parentNode) chatWindow.removeChild(loadingMsg);
     if (assistantMsg.parentNode) chatWindow.removeChild(assistantMsg);
@@ -345,7 +636,26 @@ sidebarToggle.addEventListener('click', () => {
   sidebar.classList.toggle('collapsed');
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   messageInput.focus();
-  showWelcomeScreen();
+
+  // Initialize session
+  sessionId = getOrCreateSessionId();
+
+  // Restore conversation from localStorage
+  const storedConvId = localStorage.getItem('axiom_active_conversation_id');
+  if (storedConvId) {
+    const loaded = await loadConversation(storedConvId);
+    if (!loaded) {
+      // Stored conversation ID is invalid or not accessible
+      localStorage.removeItem('axiom_active_conversation_id');
+      activeConversationId = null;
+      showWelcomeScreen();
+    }
+  } else {
+    showWelcomeScreen();
+  }
+
+  // Render conversation list in sidebar
+  await renderConversationList();
 });

@@ -492,6 +492,88 @@ body {
   }
 }
 
+/* ----- Conversation History Sidebar ----- */
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-button);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.conversation-item:hover {
+  background: var(--fill);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.conversation-item.active {
+  background: var(--fill);
+  border-color: var(--accent-soft);
+  color: var(--text);
+}
+
+.conversation-item .conversation-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.conversation-item .conv-action-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all var(--transition);
+}
+
+.conversation-item .conv-action-btn:hover {
+  border-color: var(--border);
+  color: var(--text);
+  background: var(--fill);
+}
+
+.conversation-item .conv-action-btn.conv-delete-btn:hover {
+  color: #ef4444;
+}
+
+.conversation-item .conv-action-btn:focus-visible {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.sidebar.collapsed .conversation-list {
+  display: none;
+}
+
+#sidebarNav {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 10px;
+}
+
 /* ----- Markdown Content Styles ----- */
 .stream-content {
   font-family: var(--font-sans);

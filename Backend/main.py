@@ -6,7 +6,10 @@ Verified NVIDIA docs: https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-
 import os
 import json
 import logging
-from typing import List
+import sqlite3
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +23,7 @@ logger = logging.getLogger("axiom")
 app = FastAPI(
     title="AXIOM — Streaming + Markdown",
     description="Modern AI chatbot with NVIDIA Nemotron 3 Ultra streaming and safe Markdown rendering.",
-    version="4.0.0",
+    version="4.1.0",
 )
 
 app.add_middleware(
@@ -36,6 +39,75 @@ NVIDIA_MODEL_ID = "nvidia/nemotron-3-ultra-550b-a55b"
 NVIDIA_INFERENCE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "axiom.db")
+
+
+# =====================================================================
+# DATABASE LAYER (SQLite)
+# =====================================================================
+
+def get_db() -> sqlite3.Connection:
+    """Create a new SQLite connection per request."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db() -> None:
+    """Create tables and indexes if they don't exist."""
+    conn = get_db()
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                title TEXT NOT NULL DEFAULT 'New Conversation',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_conversations_session_id
+                ON conversations(session_id);
+            CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
+                ON messages(conversation_id);
+            CREATE INDEX IF NOT EXISTS idx_conversations_updated_at
+                ON conversations(updated_at DESC);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Initialize database on startup
+init_db()
+
+
+def now_iso() -> str:
+    """Return current UTC timestamp in ISO 8601 format."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def verify_conversation_ownership(
+    conn: sqlite3.Connection, conversation_id: str, session_id: str
+) -> bool:
+    """Check that a conversation belongs to the given session."""
+    row = conn.execute(
+        "SELECT id FROM conversations WHERE id = ? AND session_id = ?",
+        (conversation_id, session_id),
+    ).fetchone()
+    return row is not None
+
 
 # =====================================================================
 # PYDANTIC MODELS
@@ -56,6 +128,45 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="User message")
     history: List[ChatMessage] = Field(default_factory=list)
+    session_id: Optional[str] = Field(
+        None, description="Anonymous session identifier"
+    )
+    conversation_id: Optional[str] = Field(
+        None, description="Existing conversation to continue"
+    )
+
+
+class ConversationCreate(BaseModel):
+    session_id: str = Field(..., description="Anonymous session identifier")
+    title: str = Field(default="New Conversation", min_length=1)
+
+
+class ConversationResponse(BaseModel):
+    id: str
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+
+
+class MessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: str
+
+
+class ConversationDetail(BaseModel):
+    id: str
+    session_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    messages: List[MessageResponse] = []
+
+
+class ConversationRename(BaseModel):
+    title: str = Field(..., min_length=1)
 
 
 # =====================================================================
@@ -77,6 +188,194 @@ async def serve_js():
     return FileResponse(os.path.join(FRONTEND_DIR, "app.js"))
 
 # =====================================================================
+# CONVERSATION CRUD ENDPOINTS
+# =====================================================================
+
+@app.post("/conversations", response_model=ConversationResponse)
+async def create_conversation(payload: ConversationCreate):
+    """Create a new conversation for the given session."""
+    conn = get_db()
+    try:
+        conv_id = str(uuid.uuid4())
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO conversations (id, session_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (conv_id, payload.session_id, payload.title, created, created),
+        )
+        conn.commit()
+        return ConversationResponse(
+            id=conv_id,
+            session_id=payload.session_id,
+            title=payload.title,
+            created_at=created,
+            updated_at=created,
+        )
+    except sqlite3.IntegrityError as exc:
+        logger.error("Conversation creation failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Could not create conversation")
+    finally:
+        conn.close()
+
+
+@app.get("/conversations", response_model=List[ConversationResponse])
+async def list_conversations(session_id: str):
+    """Retrieve all conversations for a session, most recent first."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, session_id, title, created_at, updated_at
+            FROM conversations
+            WHERE session_id = ?
+            ORDER BY updated_at DESC
+            """,
+            (session_id,),
+        ).fetchall()
+        return [
+            ConversationResponse(
+                id=row["id"],
+                session_id=row["session_id"],
+                title=row["title"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/conversations/{conversation_id}", response_model=ConversationDetail)
+async def get_conversation(conversation_id: str, session_id: str):
+    """Retrieve a conversation and its messages, verifying session ownership."""
+    conn = get_db()
+    try:
+        if not verify_conversation_ownership(conn, conversation_id, session_id):
+            raise HTTPException(
+                status_code=403, detail="Conversation not found or access denied"
+            )
+
+        conv_row = conn.execute(
+            """
+            SELECT id, session_id, title, created_at, updated_at
+            FROM conversations
+            WHERE id = ?
+            """,
+            (conversation_id,),
+        ).fetchone()
+        if not conv_row:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        msg_rows = conn.execute(
+            """
+            SELECT id, role, content, created_at
+            FROM messages
+            WHERE conversation_id = ?
+            ORDER BY created_at ASC
+            """,
+            (conversation_id,),
+        ).fetchall()
+
+        return ConversationDetail(
+            id=conv_row["id"],
+            session_id=conv_row["session_id"],
+            title=conv_row["title"],
+            created_at=conv_row["created_at"],
+            updated_at=conv_row["updated_at"],
+            messages=[
+                MessageResponse(
+                    id=row["id"],
+                    role=row["role"],
+                    content=row["content"],
+                    created_at=row["created_at"],
+                )
+                for row in msg_rows
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to retrieve conversation: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not retrieve conversation")
+    finally:
+        conn.close()
+
+
+@app.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def rename_conversation(
+    conversation_id: str, payload: ConversationRename, session_id: str
+):
+    """Rename a conversation (session ownership verified)."""
+    conn = get_db()
+    try:
+        if not verify_conversation_ownership(conn, conversation_id, session_id):
+            raise HTTPException(
+                status_code=403, detail="Conversation not found or access denied"
+            )
+
+        conn.execute(
+            """
+            UPDATE conversations
+            SET title = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (payload.title, now_iso(), conversation_id),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            """
+            SELECT id, session_id, title, created_at, updated_at
+            FROM conversations
+            WHERE id = ?
+            """,
+            (conversation_id,),
+        ).fetchone()
+        return ConversationResponse(
+            id=row["id"],
+            session_id=row["session_id"],
+            title=row["title"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to rename conversation: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not rename conversation")
+    finally:
+        conn.close()
+
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str, session_id: str):
+    """Delete a conversation and all its messages (session ownership verified)."""
+    conn = get_db()
+    try:
+        if not verify_conversation_ownership(conn, conversation_id, session_id):
+            raise HTTPException(
+                status_code=403, detail="Conversation not found or access denied"
+            )
+
+        conn.execute(
+            "DELETE FROM conversations WHERE id = ?",
+            (conversation_id,),
+        )
+        conn.commit()
+        return {"status": "deleted", "id": conversation_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to delete conversation: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not delete conversation")
+    finally:
+        conn.close()
+
+
+# =====================================================================
 # STREAMING CHAT ENDPOINT
 # =====================================================================
 
@@ -84,9 +383,7 @@ async def serve_js():
 async def chat_endpoint(request: ChatRequest):
     """
     Stream NVIDIA Nemotron 3 Ultra responses as Server-Sent Events.
-    Uses stream=True with OpenAI-compatible chunk format.
-    Configures max_tokens at the provider's actual maximum (4096)
-    for the NVIDIA Nemotron 3 Ultra 550B model.
+    Persists user and assistant messages to SQLite conversation store.
     """
     # Custom response for specific query
     normalized = request.message.strip().lower()
@@ -102,6 +399,61 @@ async def chat_endpoint(request: ChatRequest):
             iter([f"data: {json.dumps({'error': 'NVIDIA_API_KEY not configured'})}\n\n"]),
             media_type="text/event-stream",
         )
+
+    # Resolve session and conversation
+    session_id = request.session_id or str(uuid.uuid4())
+    conversation_id = request.conversation_id
+
+    conn = get_db()
+    try:
+        if conversation_id:
+            # Verify the conversation belongs to this session
+            if not verify_conversation_ownership(conn, conversation_id, session_id):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Conversation not found or access denied",
+                )
+        else:
+            # Create a new conversation
+            conv_id = str(uuid.uuid4())
+            created = now_iso()
+            title = request.message[:50] + ("..." if len(request.message) > 50 else "")
+            conn.execute(
+                """
+                INSERT INTO conversations (id, session_id, title, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (conv_id, session_id, title, created, created),
+            )
+            conn.commit()
+            conversation_id = conv_id
+
+        # Save the user's message before streaming
+        user_msg_id = str(uuid.uuid4())
+        created = now_iso()
+        conn.execute(
+            """
+            INSERT INTO messages (id, conversation_id, role, content, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_msg_id, conversation_id, "user", request.message, created),
+        )
+        conn.execute(
+            """
+            UPDATE conversations
+            SET updated_at = ?
+            WHERE id = ?
+            """,
+            (created, conversation_id),
+        )
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to prepare conversation: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not prepare conversation")
+    finally:
+        conn.close()
 
     messages = [
         {"role": "system", "content": "You are AXIOM, a modern, helpful AI assistant."}
@@ -165,6 +517,7 @@ async def chat_endpoint(request: ChatRequest):
         return StreamingResponse(err_gen(), media_type="text/event-stream")
 
     def stream_generator():
+        full_response = ""
         try:
             for line in resp.iter_lines():
                 if not line:
@@ -182,11 +535,42 @@ async def chat_endpoint(request: ChatRequest):
                             delta = choices[0].get("delta", {})
                             content = delta.get("content", "")
                             if content is not None and content != "":
+                                full_response += content
                                 yield f"data: {json.dumps({'chunk': content})}\n\n"
                     except json.JSONDecodeError:
                         pass
             yield "data: [DONE]\n\n"
         finally:
-            resp.close()
+            # Persist the assistant response after streaming completes
+            try:
+                if full_response.strip():
+                    db_conn = get_db()
+                    try:
+                        asst_msg_id = str(uuid.uuid4())
+                        created = now_iso()
+                        db_conn.execute(
+                            """
+                            INSERT INTO messages (id, conversation_id, role, content, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                            """,
+                            (asst_msg_id, conversation_id, "assistant", full_response, created),
+                        )
+                        db_conn.execute(
+                            """
+                            UPDATE conversations
+                            SET updated_at = ?
+                            WHERE id = ?
+                            """,
+                            (created, conversation_id),
+                        )
+                        db_conn.commit()
+                    finally:
+                        db_conn.close()
+            except Exception as exc:
+                logger.error("Failed to save assistant response: %s", exc)
+            try:
+                resp.close()
+            except Exception:
+                pass
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
