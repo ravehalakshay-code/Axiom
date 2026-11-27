@@ -574,6 +574,11 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+.success-toast {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 /* ----- Custom Modals ----- */
 .modal-overlay {
   position: fixed;
@@ -616,11 +621,40 @@ body {
   }
 }
 
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px 12px 20px;
+  margin-bottom: 0;
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-button);
+  transition: all var(--transition);
+}
+
+.btn-close:hover {
+  color: var(--text);
+  background: var(--fill);
+}
+
+.btn-close:focus-visible {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
 .modal-title {
   font-family: var(--font-serif);
   font-size: 18px;
   font-weight: 600;
-  margin: 0 0 12px 0;
+  margin: 0;
   color: var(--text);
 }
 

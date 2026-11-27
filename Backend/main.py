@@ -332,11 +332,7 @@ async def get_conversation(conversation_id: str, session_id: str):
     """Retrieve a conversation and its messages, verifying session ownership."""
     conn = get_db()
     try:
-        if not verify_conversation_ownership(conn, conversation_id, session_id):
-            raise HTTPException(
-                status_code=403, detail="Conversation not found or access denied"
-            )
-
+        # First check if the conversation exists at all
         conv_row = conn.execute(
             """
             SELECT id, session_id, title, created_at, updated_at
@@ -346,7 +342,19 @@ async def get_conversation(conversation_id: str, session_id: str):
             (conversation_id,),
         ).fetchone()
         if not conv_row:
+            logger.warning(f"Get failed: conversation {conversation_id} not found in database")
             raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Then check session ownership
+        if conv_row["session_id"] != session_id:
+            logger.warning(
+                f"Get failed: conversation {conversation_id} owned by session "
+                f"{conv_row['session_id']}, requested by session {session_id}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Access denied: conversation belongs to another session",
+            )
 
         msg_rows = conn.execute(
             """
@@ -390,9 +398,24 @@ async def rename_conversation(
     """Rename a conversation (session ownership verified)."""
     conn = get_db()
     try:
-        if not verify_conversation_ownership(conn, conversation_id, session_id):
+        # First check if the conversation exists at all
+        conv_row = conn.execute(
+            "SELECT id, session_id FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+        if not conv_row:
+            logger.warning(f"Rename failed: conversation {conversation_id} not found in database")
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Then check session ownership
+        if conv_row["session_id"] != session_id:
+            logger.warning(
+                f"Rename failed: conversation {conversation_id} owned by session "
+                f"{conv_row['session_id']}, requested by session {session_id}"
+            )
             raise HTTPException(
-                status_code=403, detail="Conversation not found or access denied"
+                status_code=403,
+                detail="Access denied: conversation belongs to another session",
             )
 
         conn.execute(

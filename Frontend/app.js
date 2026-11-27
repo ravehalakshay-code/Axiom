@@ -88,6 +88,8 @@ function handleDeleteConfirm(conversationId) {
   deleteConversation(conversationId).then((result) => {
     if (!result.success) {
       showErrorToast(result.error || 'Failed to delete conversation. Please try again.');
+    } else {
+      showSuccessToast('Conversation deleted.');
     }
   });
 }
@@ -99,7 +101,15 @@ function createRenameModal() {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="rename-modal-title">
-      <h2 id="rename-modal-title" class="modal-title">Rename conversation</h2>
+      <div class="modal-header">
+        <h2 id="rename-modal-title" class="modal-title">Rename conversation</h2>
+        <button type="button" class="btn-close" id="rename-close" aria-label="Close rename">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
       <div class="modal-actions">
         <input type="text" id="rename-input" class="rename-input" placeholder="Enter title" maxlength="100" />
       </div>
@@ -113,6 +123,7 @@ function createRenameModal() {
   const input = overlay.querySelector('#rename-input');
   const saveBtn = overlay.querySelector('#rename-save');
   const cancelBtn = overlay.querySelector('#rename-cancel');
+  const closeBtn = overlay.querySelector('#rename-close');
 
   const doRename = async () => {
     const newTitle = input.value.trim();
@@ -136,6 +147,7 @@ function createRenameModal() {
 
   saveBtn.addEventListener('click', doRename);
   cancelBtn.addEventListener('click', closeRenameModal);
+  closeBtn.addEventListener('click', closeRenameModal);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') doRename();
     if (e.key === 'Escape') closeRenameModal();
@@ -146,7 +158,7 @@ function createRenameModal() {
 
   document.body.appendChild(overlay);
   renameModal = overlay;
-  return { overlay, input, saveBtn, cancelBtn };
+  return { overlay, input, saveBtn, cancelBtn, closeBtn };
 }
 
 function openRenameModal(conversationId, currentTitle) {
@@ -162,6 +174,7 @@ function closeRenameModal() {
   if (!renameModal) return;
   renameModal.overlay.classList.remove('active');
   renameModal.input.value = '';
+  pendingRenameId = null;
 }
 
 function showErrorToast(message) {
@@ -176,6 +189,22 @@ function showErrorToast(message) {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+function showSuccessToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'error-toast success-toast';
+  toast.textContent = message;
+  toast.style.background = 'var(--accent)';
+  toast.style.color = 'var(--on-accent)';
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('show');
+  }, 10);
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }
 
 function closeAllDropdowns() {
@@ -357,7 +386,7 @@ async function deleteConversation(conversationId) {
         const errorData = await response.json();
         errorMsg = errorData.detail || errorData.message || errorMsg;
       } catch (e) {
-        // Use default message
+        // Use default message (handles 204 No Content with empty body)
       }
       return { success: false, error: errorMsg };
     }
@@ -369,15 +398,24 @@ async function deleteConversation(conversationId) {
       localStorage.removeItem('axiom_active_conversation_id');
     }
 
-    await renderConversationList();
+    // Refresh UI, but don't fail the whole operation if refresh fails
+    try {
+      await renderConversationList();
+    } catch (renderErr) {
+      loggerWarn('Failed to refresh conversation list after delete:', renderErr);
+    }
 
-    // If the deleted conversation was active, open another or show welcome screen
     if (wasActive) {
-      const conversations = await fetchConversations();
-      if (conversations.length > 0) {
-        await loadConversation(conversations[0].id);
-      } else {
-        clearConversation();
+      try {
+        const conversations = await fetchConversations();
+        if (conversations.length > 0) {
+          await loadConversation(conversations[0].id);
+        } else {
+          clearConversation();
+          showWelcomeScreen();
+        }
+      } catch (loadErr) {
+        loggerWarn('Failed to load conversation after delete:', loadErr);
         showWelcomeScreen();
       }
     }
