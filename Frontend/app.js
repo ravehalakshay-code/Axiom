@@ -336,6 +336,29 @@ function renderMarkdown(text) {
 }
 
 /* ============================================
+   ASSISTANT MESSAGE RENDERING (single path)
+============================================ */
+
+/**
+ * Renders a complete assistant message element with Markdown + Copy button.
+ * Used for both newly generated responses and restored SQLite messages.
+ */
+function renderAssistantMessage(content, messageElement) {
+  const streamContent = messageElement.querySelector('.stream-content');
+  if (streamContent) {
+    streamContent.innerHTML = renderMarkdown(content);
+  } else {
+    // Fallback for message elements created without .stream-content
+    const contentDiv = messageElement.querySelector('.message-content') ||
+      messageElement.querySelector('p');
+    if (contentDiv) {
+      contentDiv.innerHTML = renderMarkdown(content);
+    }
+  }
+  addCopyButton(messageElement, content);
+}
+
+/* ============================================
    HELPER FUNCTIONS
 ============================================ */
 
@@ -347,11 +370,22 @@ function addMessage(text, sender) {
   label.className = 'message-label';
   label.textContent = sender === 'user' ? 'You' : 'AXIOM';
 
-  const content = document.createElement('p');
-  content.textContent = text;
+  if (sender === 'assistant') {
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'stream-content';
+    contentDiv.innerHTML = renderMarkdown(text);
 
-  msg.appendChild(label);
-  msg.appendChild(content);
+    msg.appendChild(label);
+    msg.appendChild(contentDiv);
+    addCopyButton(msg, text);
+  } else {
+    const content = document.createElement('p');
+    content.textContent = text;
+
+    msg.appendChild(label);
+    msg.appendChild(content);
+  }
+
   chatWindow.appendChild(msg);
   chatWindow.scrollTo({ top: chatWindow.scrollHeight, behavior: 'smooth' });
 }
